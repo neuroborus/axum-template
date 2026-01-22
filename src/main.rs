@@ -17,11 +17,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr = settings.socket_addr();
 
-    // build_router() returns Router<AppState>
-    // with_state(state) "seals" the state and returns Router<()>
-    let app = app::build_router(&settings);
+    // build_router() returns Router<()> with state already applied.
     let state = AppState::new(settings);
-    let app = app.with_state(state);
+    let app = app::build_router(state);
 
     tracing::info!(%addr, "Listening");
 

@@ -8,7 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 // NOTE: This template defines a full error taxonomy upfront.
-// Most variants are not used by the minimal starter endpoints (e.g. /health),
+// Most variants are not used by the minimal starter endpoints (e.g. /ops/health),
 // so we intentionally silence `dead_code` warnings in this module.
 // As the project grows, handlers/services should start using these variants.
 #[allow(dead_code)]
@@ -31,6 +31,15 @@ pub enum AppError {
 
     #[error("Internal error (id={error_id})")]
     Internal { error_id: Uuid },
+
+    #[error("Request timeout")]
+    Timeout,
+
+    #[error("Service unavailable")]
+    ServiceUnavailable,
+
+    #[error("Payload too large")]
+    PayloadTooLarge,
 }
 
 #[derive(Debug, Serialize)]
@@ -54,6 +63,18 @@ impl AppError {
         }
     }
 
+    pub fn timeout() -> Self {
+        Self::Timeout
+    }
+
+    pub fn service_unavailable() -> Self {
+        Self::ServiceUnavailable
+    }
+
+    pub fn payload_too_large() -> Self {
+        Self::PayloadTooLarge
+    }
+
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
@@ -62,6 +83,9 @@ impl AppError {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::Conflict { .. } => StatusCode::CONFLICT,
             Self::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Timeout => StatusCode::GATEWAY_TIMEOUT,
+            Self::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Self::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
         }
     }
 
@@ -73,6 +97,9 @@ impl AppError {
             Self::Forbidden => "forbidden",
             Self::Conflict { .. } => "conflict",
             Self::Internal { .. } => "internal",
+            Self::Timeout => "timeout",
+            Self::ServiceUnavailable => "service_unavailable",
+            Self::PayloadTooLarge => "payload_too_large",
         }
     }
 
@@ -84,6 +111,9 @@ impl AppError {
             Self::Forbidden => "Forbidden".to_string(),
             Self::Conflict { message } => message.clone(),
             Self::Internal { .. } => "Internal server error".to_string(),
+            Self::Timeout => "Request timeout".to_string(),
+            Self::ServiceUnavailable => "Service unavailable".to_string(),
+            Self::PayloadTooLarge => "Payload too large".to_string(),
         }
     }
 }

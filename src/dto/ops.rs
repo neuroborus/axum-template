@@ -9,7 +9,23 @@ pub enum EnvDto {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct HealthResponse {
-    pub ok: bool,
+pub struct StatusResponse {
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MetricsResponse {
+    pub uptime_seconds: u64,
+    pub requests_total: u64,
+    pub responses_total: u64,
+    pub responses_2xx: u64,
+    pub responses_4xx: u64,
+    pub responses_5xx: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BuildResponse {
+    pub name: String,
+    pub version: String,
     pub env: EnvDto,
 }

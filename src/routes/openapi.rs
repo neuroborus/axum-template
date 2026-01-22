@@ -5,8 +5,25 @@ use crate::state::AppState;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(crate::handlers::ops::get_health),
-    components(schemas(crate::dto::ops::HealthResponse)),
+    info(
+        title = "{{project-name}} API",
+        version = "0.1.0",
+        license(
+            name = "MIT",
+            identifier = "MIT"
+        )
+    ),
+    paths(
+        crate::handlers::ops::get_health,
+        crate::handlers::ops::get_ready,
+        crate::handlers::ops::get_metrics,
+        crate::handlers::ops::get_build
+    ),
+    components(schemas(
+        crate::dto::ops::BuildResponse,
+        crate::dto::ops::MetricsResponse,
+        crate::dto::ops::StatusResponse
+    )),
     tags((name = "ops", description = "Operational endpoints"))
 )]
 pub struct ApiDoc;

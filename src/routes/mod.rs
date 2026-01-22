@@ -7,6 +7,6 @@ mod ops;
 
 pub fn router() -> Router<AppState> {
     Router::<AppState>::new()
-        .merge(ops::router())
+        .nest("/ops", ops::router())
         .merge(openapi::router())
 }

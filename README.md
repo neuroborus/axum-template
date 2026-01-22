@@ -6,12 +6,13 @@ A pragmatic **Axum** service template with a clean baseline for production:
 - **Structured logging** via `tracing` + `tracing-subscriber` (JSON in prod)
 - **HTTP request tracing** via `tower-http::TraceLayer`
 - **Request ID propagation** (`x-request-id`) end-to-end
+- **Baseline middleware** (timeouts, body size limits, compression, concurrency/load shedding)
 - **Unified error model** (`thiserror` + `AppError: IntoResponse`)
 
 This template uses an **`ops`** module set:
 
 - `src/dto/ops.rs` — DTOs for ops endpoints
-- `src/handlers/ops.rs` — handlers for ops endpoints (contains the `/health` handler)
+- `src/handlers/ops.rs` — handlers for ops endpoints (`/ops/*`)
 - `src/routes/ops.rs` — route wiring for ops endpoints
 
 ---
@@ -30,6 +31,56 @@ Run with an explicit log filter:
 
 ```bash
 RUST_LOG=info,tower_http=info cargo run
+```
+
+---
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t my-service .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 3000:3000 my-service
+```
+
+Override env vars (example):
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e APP_ENV=production \
+  -e LOG_FORMAT=json \
+  -e HTTP_PORT=8080 \
+  my-service
+```
+
+The image includes a minimal HTTP healthcheck client (`wget`) so Docker Compose can probe `/ops/health`.
+
+---
+
+## Docker Compose
+
+Build and run:
+
+```bash
+docker compose up --build
+```
+
+Check health status:
+
+```bash
+docker compose ps
+```
+
+Follow logs:
+
+```bash
+docker compose logs -f app
 ```
 
 ---
@@ -125,8 +176,8 @@ use axum::{Router, routing::get};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 let health = Router::new().route(
-    "/health",
-    get(crate::handlers::ops::health).route_layer(
+    "/ops/health",
+    get(crate::handlers::ops::get_health).route_layer(
         GovernorLayer::new(Arc::new(
     GovernorConfigBuilder::default()
         .per_second(5)
@@ -142,11 +193,21 @@ let health = Router::new().route(
 
 ## Default endpoints
 
-- `GET /health` — health check (implemented under `ops`)
+- `GET /ops/health` — health check
+- `GET /ops/ready` — readiness check
+- `GET /ops/metrics` — lightweight JSON metrics (uptime + counters)
+- `GET /ops/build` — build metadata (name + version + env)
 - `GET /api-doc/openapi.json` — generated OpenAPI spec
 - `GET /swagger-ui/` — Swagger UI (interactive docs)
 
-> If you prefer a different prefix (e.g. `/ops/health`), adjust `src/routes/ops.rs`.
+### Ops endpoints
+
+All operational endpoints live under `/ops/*` and return small JSON payloads.
+`/ops/metrics` is dependency-free and uses in-memory counters for basic service telemetry.
+
+The app enforces a default request body size limit of 2 MiB via Axum's `DefaultBodyLimit`
+for common extractors (e.g. JSON, form, bytes). Override it by adding a different
+`DefaultBodyLimit` layer closer to a route or router.
 
 ---
 
@@ -182,11 +243,11 @@ This README intentionally reflects the **actual repository tree**.
 
 - `src/main.rs` — bootstrap: load config, init logging, build router, bind/listen, graceful shutdown.
 - `src/config.rs` — env config + logging mode decision (JSON logs in production).
-- `src/app.rs` — router composition + middleware stack (TraceLayer, request-id propagation, sensitive headers).
+- `src/app.rs` — router composition + middleware stack (request-id, tracing, timeouts, body limits, compression, concurrency/load shedding).
 - `src/state.rs` — shared application state (`AppState`) available to handlers.
 - `src/error.rs` — unified error model (`AppError`) implementing `IntoResponse`.
 - `src/routes/*` — route wiring (mount points), including:
-  - `routes/ops.rs` — ops routes (contains the `/health` route)
+  - `routes/ops.rs` — ops routes (`/ops/*`)
   - `routes/openapi.rs` — Swagger UI + OpenAPI JSON routes
 - `src/handlers/*` — HTTP handlers grouped by area (`ops`).
 - `src/dto/*` — request/response DTOs and OpenAPI schemas.
@@ -223,6 +284,7 @@ Tokio feature flags: https://docs.rs/tokio/latest/tokio/#feature-flags
   This template uses:
   - `tower::ServiceBuilder` to compose the middleware stack in `src/app.rs`.
   - `tower::util::ServiceExt` (the `util` feature) in tests to execute requests via `.oneshot()` without binding to a TCP port.
+  - `ConcurrencyLimitLayer` and `LoadShedLayer` for baseline overload protection.
 
 Tower docs: https://docs.rs/tower/latest/tower/  
 Tower features: https://docs.rs/crate/tower/latest/features  
@@ -231,6 +293,8 @@ Tower features: https://docs.rs/crate/tower/latest/features
 - **`tower-http`** — production-grade HTTP middleware:
   - `TraceLayer` for request spans and response latencies
   - request-id generation and propagation
+  - response compression (gzip)
+  - timeouts and request body size limits
   - sensitive header marking (avoid leaking auth/cookies into logs)
 
 Feature reference: https://docs.rs/crate/tower-http/latest/features  
@@ -280,6 +344,7 @@ This template enables specific crate feature flags in `Cargo.toml` (kept explici
 Enabled features:
 
 - `macros`
+- `net`
 - `rt-multi-thread`
 - `signal`
 
@@ -289,6 +354,9 @@ Feature reference: https://docs.rs/tokio/latest/tokio/#feature-flags
 
 Enabled features:
 
+- `limit`
+- `load-shed`
+- `timeout`
 - `util` (test helpers like `.oneshot()`)
 
 Feature reference: https://docs.rs/crate/tower/latest/features
@@ -297,9 +365,11 @@ Feature reference: https://docs.rs/crate/tower/latest/features
 
 Enabled features:
 
-- `trace`
+- `compression-gzip`
+- `cors`
 - `request-id`
 - `sensitive-headers`
+- `trace`
 - `util`
 - `cors`
 
@@ -319,8 +389,11 @@ Feature reference: https://docs.rs/crate/tower-governor/latest/features
 
 Enabled features:
 
+- `ansi`
 - `env-filter`
+- `fmt`
 - `json`
+- `tracing-log`
 
 Feature reference: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/#crate-feature-flags
 
@@ -329,6 +402,7 @@ Feature reference: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/
 Enabled features:
 
 - `derive`
+- `std`
 
 Feature reference: https://serde.rs/feature-flags.html
 
@@ -336,6 +410,7 @@ Feature reference: https://serde.rs/feature-flags.html
 
 Enabled features:
 
+- `std`
 - `v4`
 
 Feature reference: https://docs.rs/crate/uuid/latest/features
@@ -345,6 +420,7 @@ Feature reference: https://docs.rs/crate/uuid/latest/features
 Enabled features:
 
 - `axum`
+- `url`
 
 Feature reference: https://docs.rs/utoipa-swagger-ui/latest/utoipa_swagger_ui/#crate-features
 
@@ -414,10 +490,10 @@ They execute requests directly against the Axum `Router` (as a `tower::Service`)
 
 Covered checks:
 
-- `GET /health` returns `200` and `{ "ok": true }`
+- `GET /ops/health` returns `200` and `{ "status": "ok" }`
 - `x-request-id` is generated if missing
 - `x-request-id` is propagated back if provided by the client
-- OpenAPI JSON includes the `/health` path
+- OpenAPI JSON includes the `/ops/health` path
 - Swagger UI is served under `/swagger-ui/`
 - `AppError` converts to a consistent JSON error response (`IntoResponse`)
 
